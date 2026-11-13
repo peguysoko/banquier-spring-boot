@@ -1,0 +1,7 @@
+/* Réglages de base de toute la page */
+body {
+  margin: 0;
+  font-family: system-ui, Arial, sans-serif;
+  background: #f3f4f6;
+  color: #1f2937;
+}

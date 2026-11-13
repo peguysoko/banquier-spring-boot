@@ -9,6 +9,10 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.cors.CorsConfiguration;                  // les règles CORS
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import java.util.List;
 
 @Configuration
 public class SecurityConfig {
@@ -19,17 +23,34 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
+    // NOUVEAU : les règles CORS = qui a le droit de parler à la banque depuis un navigateur
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+        // Seule la vitrine locale est autorisée (pas "*" = tout le monde)
+        config.setAllowedOrigins(List.of("http://localhost:5173"));
+        // Les types de demandes acceptés
+        config.setAllowedMethods(List.of("GET", "POST"));
+        // Les en-têtes que la vitrine a le droit d'envoyer
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "Idempotency-Key"));
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/api/**", config);   // ces règles valent pour toutes les adresses /api/...
+        return source;
+    }
+
     // Le règlement : qui a le droit d'entrer où
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
+            // NOUVEAU : on active CORS avec les règles définies ci-dessus
+            .cors(Customizer.withDefaults())
             // Notre API n'utilise pas de cookies de session : on désactive la protection CSRF
             .csrf(csrf -> csrf.disable())
             // STATELESS = le vigile ne retient personne : on se présente à CHAQUE demande
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                // ANNULER un virement : seulement l'ADMIN.
-                // Le "*" remplace UN morceau de l'adresse (le numéro du virement).
+                // ANNULER un virement : seulement l'ADMIN
                 .requestMatchers(HttpMethod.POST, "/api/transfers/*/reverse").hasRole("ADMIN")
                 // FAIRE UN VIREMENT : seulement CAISSIER ou ADMIN
                 .requestMatchers(HttpMethod.POST, "/api/transfers").hasAnyRole("CAISSIER", "ADMIN")
@@ -39,9 +60,9 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/reconciliation/**").hasAnyRole("AUDITEUR", "ADMIN")
                 // CONSULTER les comptes : tous les rôles (le contrôleur filtre pour les CLIENT)
                 .requestMatchers(HttpMethod.GET, "/api/accounts/**").hasAnyRole("CLIENT", "CAISSIER", "AUDITEUR", "ADMIN")
-                // La page d'erreur interne de Spring doit rester accessible pour afficher les refus (401, 403...)
+                // La page d'erreur interne de Spring doit rester accessible pour afficher les refus
                 .requestMatchers("/error").permitAll()
-                // NOUVEAU : tout le reste est REFUSÉ. Une règle oubliée ne laisse plus passer personne.
+                // Tout le reste est REFUSÉ
                 .anyRequest().denyAll())
             // httpBasic = identifiant + mot de passe envoyés avec chaque demande
             .httpBasic(Customizer.withDefaults());
